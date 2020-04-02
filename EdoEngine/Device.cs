@@ -1,7 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Media.Playback;
+using System.Threading.Tasks;
+using Windows.ApplicationModel;
+using Windows.Storage;
 using Windows.UI.Xaml.Media.Imaging;
+using Newtonsoft.Json;
 using SharpDX;
 
 namespace EdoEngine
@@ -153,6 +157,59 @@ namespace EdoEngine
                     DrawLine(pixelC, pixelA);
                 }
             }
+        }
+
+        // Asynchronous Json model loading
+        public static async Task<Mesh[]> LoadJsonFileAsync(string fileName)
+        {
+            var meshes = new List<Mesh>();
+            var file = await Package.Current.InstalledLocation.GetFileAsync(fileName);
+            var data = await FileIO.ReadTextAsync(file);
+            dynamic jsonObj = JsonConvert.DeserializeObject(data);
+
+            for (var meshIndex = 0; meshIndex < jsonObj.meshes.Count; meshIndex++)
+            {
+                var vertArray = jsonObj.meshes[meshIndex].vertices;
+                var indArray = jsonObj.meshes[meshIndex].indices;
+
+                var uvCount = jsonObj.meshes[meshIndex].uvCount.Value;
+                var vertexStep = (int) uvCount switch
+                {
+                    0 => 6,
+                    1 => 8,
+                    2 => 10,
+                    _ => 1
+                };
+
+                var vertexCount = vertArray.Count / vertexStep;
+                var faceCount = indArray.Count / 3;
+                var mesh = new Mesh(jsonObj.meshes[meshIndex].name.Value, vertexCount, faceCount);
+
+                // First fill the vertex array of our mesh
+                for (var i = 0; i < vertexCount; i++)
+                {
+                    var x = (float) vertArray[i * vertexStep].Value;
+                    var y = (float) vertArray[i * vertexStep + 1].Value;
+                    var z = (float) vertArray[i * vertexStep + 2].Value;
+                    mesh.Vertices[i] = new Vector3(x, y, z);
+                }
+
+                // Fill face array
+                for (var i = 0; i < faceCount; i++)
+                {
+                    var a = (int) indArray[i * 3].Value;
+                    var b = (int) indArray[i * 3 + 1].Value;
+                    var c = (int) indArray[i * 3 + 2].Value;
+                    mesh.Faces[i] = new Face {A = a, B = b, C = c};
+                }
+
+                var position = jsonObj.meshes[meshIndex].position;
+                mesh.Position = new Vector3((float) position[0].Value, (float) position[1].Value,
+                    (float) position[2].Value);
+                meshes.Add(mesh);
+            }
+
+            return meshes.ToArray();
         }
     }
 }
