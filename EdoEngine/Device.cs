@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices.WindowsRuntime;
+﻿using System;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Media.Playback;
 using Windows.UI.Xaml.Media.Imaging;
 using SharpDX;
@@ -17,7 +18,7 @@ namespace EdoEngine
             // (width * height) * 4 (RGBA values)
             _backBuffer = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
         }
-        
+
         // Called to clear the back buffer with a specific color
         public void Clear(byte r, byte g, byte b, byte a)
         {
@@ -30,17 +31,17 @@ namespace EdoEngine
                 _backBuffer[i + 3] = a;
             }
         }
-        
+
         // When ready, flush back buffer to front buffer
         public void Present()
         {
             using var stream = _bitmap.PixelBuffer.AsStream();
             // Writing our byte[] back buffer into the writeable bitmap stream
             stream.Write(_backBuffer, 0, _backBuffer.Length);
-            
+
             _bitmap.Invalidate();
         }
-        
+
         // Put a pixel on screen at specific X,Y coordinates
         public void PutPixel(int x, int y, Color4 color)
         {
@@ -53,7 +54,7 @@ namespace EdoEngine
             _backBuffer[index + 2] = (byte) (color.Red * 255);
             _backBuffer[index + 3] = (byte) (color.Alpha * 255);
         }
-        
+
         // Project takes some 3D coordinates and transforms them in 2D coordinates using the transformation matrix
         public Vector2 Project(Vector3 coord, Matrix transMat)
         {
@@ -64,10 +65,10 @@ namespace EdoEngine
             // top left.
             var x = point.X * _bitmap.PixelWidth + _bitmap.PixelWidth / 2.0f;
             var y = -point.Y * _bitmap.PixelHeight + _bitmap.PixelHeight / 2.0f;
-            
+
             return new Vector2(x, y);
         }
-        
+
         // Calls PutPixel with clipping operation beforehand
         public void DrawPoint(Vector2 point)
         {
@@ -75,10 +76,46 @@ namespace EdoEngine
             if (point.X >= 0 && point.Y >= 0 && point.X < _bitmap.PixelWidth && point.Y < _bitmap.PixelHeight)
             {
                 // Draw yellow point
-                PutPixel((int)point.X, (int)point.Y, new Color4(1.0f, 1.0f, 0.0f, 1.0f));
+                PutPixel((int) point.X, (int) point.Y, new Color4(1.0f, 1.0f, 0.0f, 1.0f));
             }
         }
-        
+
+        // Draws a line between two points using Bresenham's line algorithm
+        public void DrawLine(Vector2 point1, Vector2 point2)
+        {
+            var x1 = (int) point1.X;
+            var y1 = (int) point1.Y;
+            var x2 = (int) point2.X;
+            var y2 = (int) point2.Y;
+
+            var dx = Math.Abs(x2 - x1);
+            var dy = Math.Abs(y2 - y1);
+            var sx = x1 < x2 ? 1 : -1;
+            var sy = y1 < y2 ? 1 : -1;
+            var err = dx - dy;
+
+            while (true)
+            {
+                DrawPoint(new Vector2(x1, y1));
+
+                if (x1 == x2 && y1 == y2)
+                    break;
+
+                var e2 = 2 * err;
+                if (e2 > -dy)
+                {
+                    err -= dy;
+                    x1 += sx;
+                }
+
+                if (e2 < dx)
+                {
+                    err += dx;
+                    y1 += sy;
+                }
+            }
+        }
+
         // The main method of the engine that re-computes each vertex projection during each frame
         public void Render(Camera camera, params Mesh[] meshes)
         {
@@ -93,12 +130,27 @@ namespace EdoEngine
                                   Matrix.Translation(mesh.Position);
                 var transformationMatrix = worldMatrix * viewMatrix * projMatrix;
 
-                foreach (var vertex in mesh.Vertices)
+                /*foreach (var vertex in mesh.Vertices)
                 {
                     // First project the 3D coordinates to 2D space
                     var point = Project(vertex, transformationMatrix);
                     // Then draw on screen
                     DrawPoint(point);
+                }*/
+
+                foreach (var face in mesh.Faces)
+                {
+                    var vertexA = mesh.Vertices[face.A];
+                    var vertexB = mesh.Vertices[face.B];
+                    var vertexC = mesh.Vertices[face.C];
+
+                    var pixelA = Project(vertexA, transformationMatrix);
+                    var pixelB = Project(vertexB, transformationMatrix);
+                    var pixelC = Project(vertexC, transformationMatrix);
+
+                    DrawLine(pixelA, pixelB);
+                    DrawLine(pixelB, pixelC);
+                    DrawLine(pixelC, pixelA);
                 }
             }
         }
